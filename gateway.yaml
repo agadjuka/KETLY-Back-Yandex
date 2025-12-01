@@ -16,12 +16,12 @@ paths:
       summary: Proxy all POST requests to container
       x-yc-apigateway-integration:
         type: http
-        url: https://bbaft0plqd97veqp3qbl.containers.yandexcloud.net/{proxy}
+        url: https://bba8gegarqvrukquktud.containers.yandexcloud.net/{proxy}
         method: post
     get:
       summary: Proxy all GET requests to container
       x-yc-apigateway-integration:
         type: http
-        url: https://bbaft0plqd97veqp3qbl.containers.yandexcloud.net/{proxy}
+        url: https://bba8gegarqvrukquktud.containers.yandexcloud.net/{proxy}
         method: get
 

@@ -32,8 +32,8 @@ jobs:
           context: .
           push: true
           tags: |
-            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/agent-container:${{ github.sha }}
-            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/agent-container:latest
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/ketlyback:${{ github.sha }}
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/ketlyback:latest
           platforms: linux/amd64
 
       - name: Deploy Serverless Container
@@ -41,9 +41,9 @@ jobs:
         uses: yc-actions/yc-sls-container-deploy@v1
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_KEY }}
-          container-name: 'agent-container'  # <-- ИСПРАВЛЕНО: было looktownbot
+          container-name: 'ketlyback'  # <-- ИСПРАВЛЕНО: было looktownbot
           folder-id: ${{ secrets.YANDEX_FOLDER_ID }}
-          revision-image-url: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/agent-container:${{ github.sha }}
+          revision-image-url: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/ketlyback:${{ github.sha }}
           revision-service-account-id: ${{ secrets.YANDEX_SERVICE_ACCOUNT_ID }}
           revision-memory: '512MB'
           revision-execution-timeout: 30
