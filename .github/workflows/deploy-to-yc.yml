@@ -1,0 +1,118 @@
+name: Deploy to Yandex Cloud
+
+on:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Yandex Container Registry
+        uses: yc-actions/yc-cr-login@v1
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_KEY }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Исправил имя образа на agent-container для порядка, но это не критично
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/agent-container:${{ github.sha }}
+            cr.yandex/${{ secrets.YC_REGISTRY_ID }}/agent-container:latest
+          platforms: linux/amd64
+
+      - name: Deploy Serverless Container
+        id: deploy
+        uses: yc-actions/yc-sls-container-deploy@v1
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_KEY }}
+          container-name: 'agent-container'  # <-- ИСПРАВЛЕНО: было looktownbot
+          folder-id: ${{ secrets.YANDEX_FOLDER_ID }}
+          revision-image-url: cr.yandex/${{ secrets.YC_REGISTRY_ID }}/agent-container:${{ github.sha }}
+          revision-service-account-id: ${{ secrets.YANDEX_SERVICE_ACCOUNT_ID }}
+          revision-memory: '512MB'
+          revision-execution-timeout: 30
+          revision-env: |
+            AUTH_HEADER=${{ secrets.AUTH_HEADER }}
+            COMPANY_ID=${{ secrets.COMPANY_ID }}
+            DEBUG=${{ secrets.DEBUG }}
+            TELEGRAM_ADMIN_GROUP_ID=${{ secrets.TELEGRAM_ADMIN_GROUP_ID }}
+            TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+            YANDEX_API_KEY_ID=${{ secrets.YANDEX_API_KEY_ID }}
+            YANDEX_API_KEY_SECRET=${{ secrets.YANDEX_API_KEY_SECRET }}
+            YANDEX_FOLDER_ID=${{ secrets.YANDEX_FOLDER_ID }}
+            YC_BUCKET_NAME=${{ secrets.YC_BUCKET_NAME }}
+            YDB_DATABASE=${{ secrets.YDB_DATABASE }}
+            YDB_ENDPOINT=${{ secrets.YDB_ENDPOINT }}
+
+      - name: Setup Yandex Cloud CLI and jq
+        if: always()
+        run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          export PATH=$PATH:$HOME/yandex-cloud/bin
+          yc version
+          sudo apt-get update && sudo apt-get install -y jq
+
+      # Этот шаг полностью переписан под использование API Gateway
+      - name: Get Gateway URL and Set Webhook
+        if: always()
+        env:
+          YC_SA_KEY_JSON: ${{ secrets.YC_SA_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          YANDEX_FOLDER_ID: ${{ secrets.YANDEX_FOLDER_ID }}
+        run: |
+          export PATH=$PATH:$HOME/yandex-cloud/bin
+          
+          # Авторизация
+          echo "$YC_SA_KEY_JSON" > /tmp/sa-key.json
+          yc config profile create sa-profile || true
+          yc config set service-account-key /tmp/sa-key.json --profile sa-profile
+          yc config set folder-id $YANDEX_FOLDER_ID --profile sa-profile
+          export YC_PROFILE=sa-profile
+          
+          # Получаем домен ШЛЮЗА (Gateway), а не контейнера
+          echo "🔍 Получаем домен API Gateway..."
+          GATEWAY_DOMAIN=$(yc serverless api-gateway get --name agent-gateway --format json 2>/dev/null | jq -r '.domain // empty' || echo "")
+          
+          if [ -z "$GATEWAY_DOMAIN" ] || [ "$GATEWAY_DOMAIN" == "null" ]; then
+            echo "⚠️ Не удалось получить домен шлюза."
+            echo "Проверь, что шлюз с именем agent-gateway существует."
+            exit 1
+          fi
+          
+          echo "✅ Домен шлюза: $GATEWAY_DOMAIN"
+          
+          # Формируем webhook URL (через HTTPS)
+          WEBHOOK_URL="https://${GATEWAY_DOMAIN}/webhook"
+          
+          # Устанавливаем webhook
+          echo "📡 Устанавливаем webhook: $WEBHOOK_URL"
+          RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+            -H "Content-Type: application/json" \
+            -d "{\"url\": \"${WEBHOOK_URL}\"}")
+          
+          if echo "$RESPONSE" | jq -e '.ok == true' > /dev/null; then
+            echo "✅ Webhook успешно установлен на ШЛЮЗ!"
+            echo "$RESPONSE" | jq '.'
+          else
+            echo "❌ Ошибка при установке webhook:"
+            echo "$RESPONSE" | jq '.'
+            exit 1
+          fi
+          
+          rm -f /tmp/sa-key.json
