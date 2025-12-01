@@ -5,8 +5,9 @@ from typing import Literal
 from langgraph.graph import StateGraph, START, END
 from .conversation_state import ConversationState
 from ..agents.stage_detector_agent import StageDetectorAgent
-from ..agents.morning_agent import MorningAgent
-from ..agents.evening_agent import EveningAgent
+from ..agents.admin_agent import AdminAgent
+from ..agents.demo_agent import DemoAgent
+from ..agents.demo_setup_agent import DemoSetupAgent
 
 from ..services.langgraph_service import LangGraphService
 from ..services.logger_service import logger
@@ -33,15 +34,17 @@ class MainGraph:
             # Создаём агентов только если их ещё нет в кэше
             MainGraph._agents_cache[cache_key] = {
                 'stage_detector': StageDetectorAgent(langgraph_service),
-                'morning': MorningAgent(langgraph_service),
-                'evening': EveningAgent(langgraph_service),
+                'admin': AdminAgent(langgraph_service),
+                'demo': DemoAgent(langgraph_service),
+                'demo_setup': DemoSetupAgent(langgraph_service),
             }
         
         # Используем агентов из кэша
         agents = MainGraph._agents_cache[cache_key]
         self.stage_detector = agents['stage_detector']
-        self.morning_agent = agents['morning']
-        self.evening_agent = agents['evening']
+        self.admin_agent = agents['admin']
+        self.demo_agent = agents['demo']
+        self.demo_setup_agent = agents['demo_setup']
         
         # Создаём граф
         self.graph = self._create_graph()
@@ -53,8 +56,9 @@ class MainGraph:
         
         # Добавляем узлы
         graph.add_node("detect_stage", self._detect_stage)
-        graph.add_node("handle_morning", self._handle_morning)
-        graph.add_node("handle_evening", self._handle_evening)
+        graph.add_node("handle_admin", self._handle_admin)
+        graph.add_node("handle_demo", self._handle_demo)
+        graph.add_node("handle_demo_setup", self._handle_demo_setup)
         
         # Добавляем рёбра
         graph.add_edge(START, "detect_stage")
@@ -62,13 +66,15 @@ class MainGraph:
             "detect_stage",
             self._route_after_detect,
             {
-                "morning": "handle_morning",
-                "evening": "handle_evening",
+                "admin": "handle_admin",
+                "demo": "handle_demo",
+                "demo_setup": "handle_demo_setup",
                 "end": END
             }
         )
-        graph.add_edge("handle_morning", END)
-        graph.add_edge("handle_evening", END)
+        graph.add_edge("handle_admin", END)
+        graph.add_edge("handle_demo", END)
+        graph.add_edge("handle_demo_setup", END)
         return graph
     
     def _detect_stage(self, state: ConversationState) -> ConversationState:
@@ -100,7 +106,7 @@ class MainGraph:
         }
     
     def _route_after_detect(self, state: ConversationState) -> Literal[
-        "morning", "evening", "end"
+        "admin", "demo", "demo_setup", "end"
     ]:
         """Маршрутизация после определения стадии"""
         # Если CallManager был вызван, завершаем граф
@@ -109,17 +115,17 @@ class MainGraph:
             return "end"
         
         # Иначе маршрутизируем по стадии
-        stage = state.get("stage", "morning")
+        stage = state.get("stage", "admin")
         logger.info(f"Маршрутизация на стадию: {stage}")
         
         # Валидация стадии
         valid_stages = [
-            "morning", "evening"
+            "admin", "demo", "demo_setup"
         ]
         
         if stage not in valid_stages:
-            logger.warning(f"⚠️ Неизвестная стадия: {stage}, устанавливаю morning")
-            return "morning"
+            logger.warning(f"⚠️ Неизвестная стадия: {stage}, устанавливаю admin")
+            return "admin"
         
         return stage
     
@@ -172,23 +178,33 @@ class MainGraph:
             "response_id": response_id
         }
     
-    def _handle_morning(self, state: ConversationState) -> ConversationState:
-        """Обработка утреннего приветствия"""
-        logger.info("Обработка утреннего приветствия")
+    def _handle_admin(self, state: ConversationState) -> ConversationState:
+        """Обработка административных функций"""
+        logger.info("Обработка административных функций")
         message = state["message"]
         previous_response_id = state.get("previous_response_id")
         chat_id = state.get("chat_id")
         
-        agent_result = self.morning_agent(message, previous_response_id, chat_id=chat_id)
-        return self._process_agent_result(self.morning_agent, agent_result, state, "MorningAgent")
+        agent_result = self.admin_agent(message, previous_response_id, chat_id=chat_id)
+        return self._process_agent_result(self.admin_agent, agent_result, state, "AdminAgent")
     
-    def _handle_evening(self, state: ConversationState) -> ConversationState:
-        """Обработка вечернего приветствия"""
-        logger.info("Обработка вечернего приветствия")
+    def _handle_demo(self, state: ConversationState) -> ConversationState:
+        """Обработка демонстрационных функций"""
+        logger.info("Обработка демонстрационных функций")
         message = state["message"]
         previous_response_id = state.get("previous_response_id")
         chat_id = state.get("chat_id")
         
-        agent_result = self.evening_agent(message, previous_response_id, chat_id=chat_id)
-        return self._process_agent_result(self.evening_agent, agent_result, state, "EveningAgent")
+        agent_result = self.demo_agent(message, previous_response_id, chat_id=chat_id)
+        return self._process_agent_result(self.demo_agent, agent_result, state, "DemoAgent")
+    
+    def _handle_demo_setup(self, state: ConversationState) -> ConversationState:
+        """Обработка настройки демонстрации"""
+        logger.info("Обработка настройки демонстрации")
+        message = state["message"]
+        previous_response_id = state.get("previous_response_id")
+        chat_id = state.get("chat_id")
+        
+        agent_result = self.demo_setup_agent(message, previous_response_id, chat_id=chat_id)
+        return self._process_agent_result(self.demo_setup_agent, agent_result, state, "DemoSetupAgent")
 

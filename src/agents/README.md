@@ -27,8 +27,8 @@
 
 ### Текущие агенты:
 
-- **GreetingAgent** - обработка приветствия
-- **ViewMyBookingAgent** - просмотр записей клиента
+- **AdminAgent** - административные функции
+- **DemoAgent** - демонстрационные функции
 
 ---
 
@@ -76,8 +76,8 @@ class YourAgent(BaseAgent):
 ```python
 class DialogueStage(str, Enum):
     """Стадии диалога"""
-    GREETING = "greeting"
-    VIEW_MY_BOOKING = "view_my_booking"
+    ADMIN = "admin"
+    DEMO = "demo"
     YOUR_STAGE = "your_stage"  # Добавьте здесь
 ```
 
@@ -100,8 +100,8 @@ from ..agents.your_agent import YourAgent
 ```python
 MainGraph._agents_cache[cache_key] = {
     'stage_detector': StageDetectorAgent(langgraph_service),
-    'greeting': GreetingAgent(langgraph_service),
-    'view_my_booking': ViewMyBookingAgent(langgraph_service),
+    'admin': AdminAgent(langgraph_service),
+    'demo': DemoAgent(langgraph_service),
     'your_stage': YourAgent(langgraph_service),  # Добавьте здесь
 }
 ```
@@ -112,8 +112,8 @@ MainGraph._agents_cache[cache_key] = {
 
 ```python
 self.stage_detector = agents['stage_detector']
-self.greeting_agent = agents['greeting']
-self.view_my_booking_agent = agents['view_my_booking']
+self.admin_agent = agents['admin']
+self.demo_agent = agents['demo']
 self.your_agent = agents['your_stage']  # Добавьте здесь
 ```
 
@@ -123,8 +123,8 @@ self.your_agent = agents['your_stage']  # Добавьте здесь
 
 ```python
 graph.add_node("detect_stage", self._detect_stage)
-graph.add_node("handle_greeting", self._handle_greeting)
-graph.add_node("handle_view_my_booking", self._handle_view_my_booking)
+graph.add_node("handle_admin", self._handle_admin)
+graph.add_node("handle_demo", self._handle_demo)
 graph.add_node("handle_your_stage", self._handle_your_stage)  # Добавьте здесь
 ```
 
@@ -234,18 +234,6 @@ agent_names = {
 }
 ```
 
-### Шаг 7: Обновление stage_descriptions.json
-
-Откройте `src/agents/stage_descriptions.json` и добавьте описание:
-
-```json
-{
-    "greeting": "Клиент только начинает диалог, здоровается или пишет впервые за долгое время.",
-    "view_my_booking": "Клиент хочет посмотреть свои предстоящие записи (\"на когда я записан?\", \"какие у меня записи?\").",
-    "your_stage": "Описание стадии для роутера"
-}
-```
-
 ---
 
 ## Удаление агента
@@ -284,10 +272,6 @@ agent_names = {
 
 Откройте `src/agents/registry.py` и удалите запись из маппинга `agent_names`.
 
-### Шаг 7: Очистка stage_descriptions.json
-
-Откройте `src/agents/stage_descriptions.json` и удалите описание стадии.
-
 ---
 
 ## Чеклист при создании агента
@@ -306,7 +290,6 @@ agent_names = {
 - [ ] Обновлена инструкция в `stage_detector_agent.py`
 - [ ] Добавлен экспорт в `__init__.py`
 - [ ] Добавлена запись в `registry.py`
-- [ ] Добавлено описание в `stage_descriptions.json`
 
 ## Чеклист при удалении агента
 
@@ -324,7 +307,6 @@ agent_names = {
 - [ ] Удалено описание из `stage_detector_agent.py`
 - [ ] Удален экспорт из `__init__.py`
 - [ ] Удалена запись из `registry.py`
-- [ ] Удалено описание из `stage_descriptions.json`
 
 ---
 

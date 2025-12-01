@@ -4,15 +4,17 @@
 from .base_agent import BaseAgent
 from .dialogue_stages import DialogueStage
 from .stage_detector_agent import StageDetectorAgent, StageDetection
-from .morning_agent import MorningAgent
-from .evening_agent import EveningAgent
+from .admin_agent import AdminAgent
+from .demo_agent import DemoAgent
+from .demo_setup_agent import DemoSetupAgent
 
 __all__ = [
     "BaseAgent",
     "DialogueStage",
     "StageDetectorAgent",
     "StageDetection",
-    "MorningAgent",
-    "EveningAgent",
+    "AdminAgent",
+    "DemoAgent",
+    "DemoSetupAgent",
 ]
 

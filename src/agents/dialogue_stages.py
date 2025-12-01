@@ -7,5 +7,6 @@ from enum import Enum
 
 class DialogueStage(str, Enum):
     """Стадии диалога"""
-    MORNING = "morning"                        # Утреннее приветствие
-    EVENING = "evening"                        # Вечернее приветствие
+    ADMIN = "admin"                            # Административные функции
+    DEMO = "demo"                              # Демонстрационные функции
+    DEMO_SETUP = "demo_setup"                  # Настройка демонстрации

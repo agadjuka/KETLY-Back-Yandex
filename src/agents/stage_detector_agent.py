@@ -23,13 +23,23 @@ class StageDetectorAgent(BaseAgent):
     """Агент для определения стадии диалога"""
     
     def __init__(self, langgraph_service: LangGraphService):
-        instruction = """**СПИСОК СТАДИЙ:**
+        instruction = """Ты — маршрутизатор (Router) ИИ администратора Ketly. НИКОГДА НЕ ОТВЕЧАЙ НА ВОПРОСЫ КЛИЕНТА, ТОЛЬКО ВЫБИРАЙ АГЕНТА.
+Твоя задача — выбрать правильного агента на основе последнего сообщения. Суть задачи - выбрать момент когда можно выбрать demo. Во всех остальных случаях использовать admin.
 
-- morning: Если в сообщении есть цифра от 0 до 10 (включительно).
-- evening: Если в сообщении есть цифра от 11 до 20 (включительно).
+ЛОГИКА ВЫБОРА:
 
-Верни ТОЛЬКО одно слово - название стадии. 
-"""
+1. **"demo"** Выбирай ТОЛЬКО если выполнены два условия:
+-клиент явно согласился на демонстрацию или сам ее попросил.
+-клиент назвал сферу деятельности своей компании.(например: "Пиццерия", "Салон красоты", "Автосервис").
+Выбирай эту стадию на всём протяжении демонстрации. Сообщения в режиме демонстрация содержат префикс [Демонстрация]. Если предыдущее сообщение в истории было с этим префиксом, то продолжай демонстрацию пока клиент не отправит слово СТОП.
+Клиент может назвать свою нишу, а согласиться на демонстрацию в сообщениях позже, в этом случае смотри соблюдены ли оба условия.
+
+2. **"admin"** (Выбирай во всех остальных случаях):
+- Клиент задает вопросы об услугах Ketly, о цене, сроках разработки и т.д.
+- Клиент просто соглашается на демо, но НЕ назвал нишу. В этом случае admin должен сначала спросить сферу.
+-Клиент назвал нишу но не в контексте демонстрации, например для того чтобы узнать как Ketly может помочь в этой сфере.
+-Во время демонстрации клиент пишет слово СТОП.
+Верни ТОЛЬКО одно слово: admin или demo."""
         
         super().__init__(
             langgraph_service=langgraph_service,
@@ -50,7 +60,7 @@ class StageDetectorAgent(BaseAgent):
         # Если CallManager был вызван, BaseAgent вернет "[CALL_MANAGER_RESULT]"
         if response == "[CALL_MANAGER_RESULT]":
             logger.info("CallManager был вызван в StageDetectorAgent")
-            return StageDetection(stage=DialogueStage.MORNING.value)
+            return StageDetection(stage=DialogueStage.ADMIN.value)
         
         # Парсим ответ
         detection = self._parse_response(response)
@@ -59,9 +69,9 @@ class StageDetectorAgent(BaseAgent):
         
         # Валидируем стадию
         if detection.stage not in [stage.value for stage in DialogueStage]:
-            logger.warning(f"Неизвестная стадия: {detection.stage}, устанавливаю morning")
+            logger.warning(f"Неизвестная стадия: {detection.stage}, устанавливаю admin")
             logger.warning(f"Доступные стадии: {[stage.value for stage in DialogueStage]}")
-            detection.stage = DialogueStage.MORNING.value
+            detection.stage = DialogueStage.ADMIN.value
         
         return detection
     
@@ -69,7 +79,7 @@ class StageDetectorAgent(BaseAgent):
         """Парсинг ответа агента в StageDetection"""
         if not response:
             logger.warning("Пустой ответ от агента определения стадии")
-            return StageDetection(stage=DialogueStage.MORNING.value)
+            return StageDetection(stage=DialogueStage.ADMIN.value)
         
         # Убираем лишние пробелы и переносы строк, приводим к нижнему регистру
         response_clean = response.strip().lower()
@@ -120,4 +130,4 @@ class StageDetectorAgent(BaseAgent):
         # Fallback
         logger.warning(f"Не удалось определить стадию из ответа: {response_clean}")
         logger.warning(f"Доступные стадии: {valid_stages}")
-        return StageDetection(stage=DialogueStage.MORNING.value)
+        return StageDetection(stage=DialogueStage.ADMIN.value)
