@@ -1,0 +1,109 @@
+Ищу код, который отправляет сообщения на Chat endpoint, чтобы определить формат и содержимое запроса.
+
+
+[3 tools called]
+
+
+Изучаю код отправки сообщений и связанные типы:
+
+
+[4 tools called]
+
+
+Проверяю тип `Language` для полной картины:
+
+
+[2 tools called]
+
+
+Проверяю формат `sessionId`:
+
+
+[1 tool called]
+
+
+## Формат отправки сообщения на Chat Endpoint
+
+### HTTP-запрос
+
+**Метод:** `POST`
+
+**URL:** Значение переменной окружения `NEXT_PUBLIC_API_URL`
+
+**Headers:**
+```json
+{
+  "Content-Type": "application/json"
+}
+```
+
+**Body (JSON):**
+```json
+{
+  "message": "текст сообщения пользователя",
+  "thread_id": "uuid-v4-идентификатор сессии",
+  "language": "ru" | "en"
+}
+```
+
+### Детали полей
+
+1. **`message`** (string)
+   - Текст сообщения пользователя
+   - Очищается через `.trim()` перед отправкой
+   - Пример: `"В чем твои главные преимущества?"`
+
+2. **`thread_id`** (string)
+   - UUID v4, генерируется один раз при загрузке страницы
+   - Используется для идентификации сессии/потока диалога
+   - Пример: `"550e8400-e29b-41d4-a716-446655440000"`
+
+3. **`language`** (string)
+   - Язык интерфейса: `"ru"` или `"en"`
+   - Определяется из контекста языка пользователя
+
+### Пример полного запроса
+
+```json
+{
+  "message": "Расскажи о своих преимуществах",
+  "thread_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "language": "ru"
+}
+```
+
+### Код отправки
+
+```12:27:src/services/chatService.ts
+export async function sendMessageToBackend(
+  text: string,
+  sessionId: string,
+  language: Language
+): Promise<string> {
+  const response = await fetch(API_URL_STRING, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message: text,
+      thread_id: sessionId,
+      language,
+    }),
+  });
+```
+
+### Ожидаемый ответ
+
+Сервер возвращает JSON с одним из полей:
+- `response` (string) — основной ответ
+- `content` (string) — альтернативное поле для ответа
+
+```11:14:src/types/chat.ts
+export interface ChatResponse {
+  response?: string;
+  content?: string;
+}
+```
+
+Клиент использует `data.response || data.content || ''` для получения текста ответа.

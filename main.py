@@ -17,8 +17,10 @@ load_dotenv()
 print("✅ .env загружен", flush=True)
 
 try:
-    from fastapi import FastAPI, Request
+    from fastapi import FastAPI, Request, HTTPException
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.responses import JSONResponse
     print("✅ FastAPI импортирован", flush=True)
 except Exception as e:
     print(f"❌ Ошибка импорта FastAPI: {e}", flush=True)
@@ -92,11 +94,34 @@ async def log_requests(request: Request, call_next):
     """Логирует все входящие запросы"""
     method = request.method
     path = request.url.path
-    print(f"🌐 [REQUEST] {method} {path}", flush=True)
-    logger.info(f"🌐 [REQUEST] {method} {path}")
+    
+    # Для POST запросов логируем тело
+    if method == "POST" and path == "/chat":
+        try:
+            body = await request.body()
+            body_str = body.decode('utf-8') if body else "empty"
+            print(f"🌐 [REQUEST] {method} {path} | Body: {body_str[:200]}", flush=True)
+            logger.info(f"🌐 [REQUEST] {method} {path} | Body: {body_str[:200]}")
+        except Exception as e:
+            print(f"🌐 [REQUEST] {method} {path} | Error reading body: {e}", flush=True)
+    else:
+        print(f"🌐 [REQUEST] {method} {path}", flush=True)
+        logger.info(f"🌐 [REQUEST] {method} {path}")
     
     response = await call_next(request)
     return response
+
+# Обработчик ошибок валидации Pydantic
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Обрабатывает ошибки валидации запросов"""
+    error_msg = f"Ошибка валидации запроса: {exc.errors()}"
+    print(f"❌ [VALIDATION] {error_msg}", flush=True)
+    logger.error(f"Ошибка валидации запроса: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": str(await request.body())}
+    )
 
 @app.on_event("startup")
 async def startup_event():
@@ -240,8 +265,8 @@ async def chat_endpoint(request: ChatRequest):
     """
     try:
         # Логируем в stdout для гарантированной видимости в Yandex Cloud
-        print(f"📨 [CHAT] Получен запрос /chat", flush=True)
-        logger.info("📨 [CHAT] Получен запрос /chat")
+        print(f"📨 [CHAT] Получен POST запрос /chat", flush=True)
+        logger.info("📨 [CHAT] Получен POST запрос /chat")
         
         message_text = request.message
         thread_id = request.thread_id
@@ -274,8 +299,10 @@ async def chat_endpoint(request: ChatRequest):
                 logger.warning("Не удалось отправить сообщение пользователя в админ-панель: %s", str(e))
         
         # Обрабатываем сообщение через агента
-        # Используем thread_id как chat_id для сохранения истории
+        # Используем thread_id как chat_id для сохранения истории (как в Telegram используется chat_id)
+        print(f"🤖 [CHAT] Отправляю сообщение агенту: thread_id={thread_id}", flush=True)
         agent_response = await yandex_agent_service.send_to_agent(thread_id, message_text)
+        print(f"✅ [CHAT] Получен ответ от агента", flush=True)
         
         # Извлекаем ответ
         if isinstance(agent_response, dict):
@@ -322,6 +349,7 @@ async def chat_endpoint(request: ChatRequest):
                     logger.warning("Не удалось отправить уведомление CallManager в админ-панель: %s", str(e))
         
         # Возвращаем ответ
+        print(f"📤 [CHAT] Отправляю ответ клиенту, длина: {len(user_message_text)}", flush=True)
         return WebChatResponse(response=user_message_text)
         
     except Exception as e:
