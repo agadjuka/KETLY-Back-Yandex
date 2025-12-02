@@ -51,6 +51,19 @@ except Exception as e:
     print(f"❌ Ошибка импорта webhook: {e}", flush=True)
     sys.exit(1)
 
+try:
+    from src.api.models import ChatRequest, WebChatResponse
+    from src.api.chat_utils import create_virtual_user, create_virtual_message
+    from src.handlers.telegram_handlers import get_admin_service
+    from src.services.date_normalizer import normalize_dates_in_text
+    from src.services.time_normalizer import normalize_times_in_text
+    from src.services.link_converter import convert_yclients_links_in_text
+    from src.services.text_formatter import convert_bold_markdown_to_html
+    print("✅ chat endpoint модули импортированы", flush=True)
+except Exception as e:
+    print(f"❌ Ошибка импорта chat endpoint модулей: {e}", flush=True)
+    sys.exit(1)
+
 print("✅ ВСЕ ИМПОРТЫ УСПЕШНЫ", flush=True)
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -182,6 +195,101 @@ async def webhook_handler(request: Request):
 async def root_post_handler(request: Request):
     """POST обработчик для корневого пути"""
     return await root_post(request)
+
+@app.post("/chat", tags=["Chat"], response_model=WebChatResponse)
+async def chat_endpoint(request: ChatRequest):
+    """
+    Эндпоинт для обработки сообщений от веб-фронтенда.
+    
+    Обрабатывает сообщения от пользователя и возвращает ответы от AI-агента.
+    Поддерживает отправку сообщений в админ-панель и проверку CallManager.
+    """
+    try:
+        message_text = request.message
+        thread_id = request.thread_id
+        
+        logger.info(f"Получен запрос /chat: thread_id={thread_id}, message_length={len(message_text)}")
+        
+        # Создаем виртуального пользователя из thread_id
+        virtual_user = create_virtual_user(thread_id)
+        user_id = virtual_user.id
+        
+        # Получаем сервисы
+        yandex_agent_service = get_yandex_agent_service()
+        application = get_application()
+        admin_service = None
+        
+        if application:
+            admin_service = get_admin_service(application.bot)
+        
+        # Отправляем сообщение пользователя в админ-панель (если настроено)
+        if admin_service:
+            try:
+                virtual_message = create_virtual_message(message_text, virtual_user)
+                await admin_service.forward_message_to_admin(
+                    user=virtual_user,
+                    message=virtual_message,
+                    source="User",
+                )
+            except Exception as e:
+                logger.warning("Не удалось отправить сообщение пользователя в админ-панель: %s", str(e))
+        
+        # Обрабатываем сообщение через агента
+        # Используем thread_id как chat_id для сохранения истории
+        agent_response = await yandex_agent_service.send_to_agent(thread_id, message_text)
+        
+        # Извлекаем ответ
+        if isinstance(agent_response, dict):
+            user_message_text = agent_response.get("user_message", "")
+            manager_alert = agent_response.get("manager_alert")
+        else:
+            user_message_text = str(agent_response)
+            manager_alert = None
+        
+        # Нормализуем даты и время в ответе
+        user_message_text = normalize_dates_in_text(user_message_text)
+        user_message_text = normalize_times_in_text(user_message_text)
+        user_message_text = convert_yclients_links_in_text(user_message_text)
+        user_message_text = convert_bold_markdown_to_html(user_message_text)
+        
+        # Отправляем ответ AI в админ-панель (если настроено)
+        if admin_service:
+            try:
+                await admin_service.send_ai_response_to_topic(
+                    user_id=user_id,
+                    ai_text=user_message_text,
+                )
+            except Exception as e:
+                logger.warning("Не удалось отправить ответ AI в админ-панель: %s", str(e))
+        
+        # Обработка уведомления CallManager
+        if manager_alert:
+            logger.info(f"CallManager был вызван для thread_id={thread_id}")
+            if admin_service:
+                try:
+                    # Нормализуем manager_alert
+                    manager_alert = normalize_dates_in_text(manager_alert)
+                    manager_alert = normalize_times_in_text(manager_alert)
+                    manager_alert = convert_yclients_links_in_text(manager_alert)
+                    manager_alert = convert_bold_markdown_to_html(manager_alert)
+                    
+                    # Отправляем уведомление в админ-панель
+                    await admin_service.send_call_manager_notification(
+                        user=virtual_user,
+                        reason="Вызов менеджера через CallManager",
+                        recent_messages=[],
+                    )
+                except Exception as e:
+                    logger.warning("Не удалось отправить уведомление CallManager в админ-панель: %s", str(e))
+        
+        # Возвращаем ответ
+        return WebChatResponse(response=user_message_text)
+        
+    except Exception as e:
+        logger.error(f"Ошибка при обработке /chat endpoint: {e}", exc_info=True)
+        # Возвращаем ошибку пользователю
+        error_message = f"Ошибка при обработке сообщения: {str(e)}"
+        return WebChatResponse(response=error_message)
 
 if __name__ == '__main__':
     import uvicorn
