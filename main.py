@@ -79,13 +79,14 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Настраиваем CORS для веб-запросов
+# Настраиваем CORS для веб-запросов (максимально разрешающий для отладки)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # В продакшене лучше указать конкретные домены
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],  # Разрешить запросы с любых доменов
+    allow_credentials=False,  # Нельзя использовать True с allow_origins=["*"]
+    allow_methods=["*"],  # Разрешить любые методы (POST, GET, OPTIONS и т.д.)
+    allow_headers=["*"],  # Разрешить любые заголовки
+    expose_headers=["*"],  # Разрешить доступ к любым заголовкам ответа
 )
 
 # Middleware для логирования всех запросов
@@ -248,12 +249,6 @@ async def chat_test():
     """Тестовый endpoint для проверки доступности /chat"""
     print("✅ [CHAT] Тестовый запрос GET /chat/test получен", flush=True)
     return {"status": "OK", "message": "Chat endpoint is available"}
-
-@app.options("/chat", tags=["Chat"])
-async def chat_options():
-    """Обработчик OPTIONS для CORS preflight запросов"""
-    print("✅ [CHAT] OPTIONS запрос получен", flush=True)
-    return {"status": "OK"}
 
 @app.post("/chat", tags=["Chat"], response_model=WebChatResponse)
 async def chat_endpoint(request: ChatRequest):
