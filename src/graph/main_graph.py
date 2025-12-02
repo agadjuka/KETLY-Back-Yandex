@@ -13,6 +13,7 @@ from ..services.langgraph_service import LangGraphService
 from ..services.logger_service import logger
 from ..services.session_config_service import get_session_config_service
 from ..agents.demo_agent import create_demo_actor_agent_with_config
+from ..storage.dialog_state_storage_factory import get_dialog_state_storage
 
 
 class MainGraph:
@@ -28,6 +29,9 @@ class MainGraph:
     
     def __init__(self, langgraph_service: LangGraphService):
         self.langgraph_service = langgraph_service
+        
+        # Инициализация хранилища состояний диалогов
+        self.dialog_state_storage = get_dialog_state_storage()
         
         # Используем кэш для агентов
         cache_key = id(langgraph_service)
@@ -87,24 +91,47 @@ class MainGraph:
         previous_response_id = state.get("previous_response_id")
         chat_id = state.get("chat_id")
         
-        # Определяем стадию
-        stage_detection = self.stage_detector.detect_stage(message, previous_response_id, chat_id=chat_id)
+        # Проверяем сохраненную стадию в YDB
+        saved_stage = None
+        if chat_id:
+            saved_stage = self.dialog_state_storage.get_stage(chat_id)
+            if saved_stage:
+                logger.info(f"Найдена сохраненная стадия для chat_id={chat_id}: {saved_stage}")
         
-        # Проверяем, был ли вызван CallManager в StageDetectorAgent
-        if hasattr(self.stage_detector, '_call_manager_result') and self.stage_detector._call_manager_result:
-            escalation_result = self.stage_detector._call_manager_result
-            logger.info(f"CallManager был вызван в StageDetectorAgent, chat_id: {chat_id}")
+        # Если стадия найдена, используем её
+        # Иначе определяем через агента
+        if saved_stage:
+            stage = saved_stage
+            logger.info(f"Используется сохраненная стадия: {stage}")
+        else:
+            # Определяем стадию через агента
+            stage_detection = self.stage_detector.detect_stage(message, previous_response_id, chat_id=chat_id)
             
-            return {
-                "answer": escalation_result.get("user_message"),
-                "manager_alert": escalation_result.get("manager_alert"),
-                "agent_name": "StageDetectorAgent",
-                "used_tools": ["CallManager"],
-                "response_id": None  # CallManager не возвращает response_id
-            }
+            # Проверяем, был ли вызван CallManager в StageDetectorAgent
+            if hasattr(self.stage_detector, '_call_manager_result') and self.stage_detector._call_manager_result:
+                escalation_result = self.stage_detector._call_manager_result
+                logger.info(f"CallManager был вызван в StageDetectorAgent, chat_id: {chat_id}")
+                
+                return {
+                    "answer": escalation_result.get("user_message"),
+                    "manager_alert": escalation_result.get("manager_alert"),
+                    "agent_name": "StageDetectorAgent",
+                    "used_tools": ["CallManager"],
+                    "response_id": None  # CallManager не возвращает response_id
+                }
+            
+            stage = stage_detection.stage
+            
+            # Сохраняем определенную стадию в YDB
+            if chat_id:
+                try:
+                    self.dialog_state_storage.set_stage(chat_id, stage)
+                    logger.info(f"Сохранена стадия для chat_id={chat_id}: {stage}")
+                except Exception as e:
+                    logger.error(f"Ошибка при сохранении стадии для chat_id={chat_id}: {e}")
         
         return {
-            "stage": stage_detection.stage
+            "stage": stage
         }
     
     def _route_after_detect(self, state: ConversationState) -> Literal[
@@ -188,7 +215,16 @@ class MainGraph:
         chat_id = state.get("chat_id")
         
         agent_result = self.admin_agent(message, previous_response_id, chat_id=chat_id)
-        return self._process_agent_result(self.admin_agent, agent_result, state, "AdminAgent")
+        result = self._process_agent_result(self.admin_agent, agent_result, state, "AdminAgent")
+        
+        # Сохраняем стадию в YDB
+        if chat_id:
+            try:
+                self.dialog_state_storage.set_stage(chat_id, "admin")
+            except Exception as e:
+                logger.error(f"Ошибка при сохранении стадии admin для chat_id={chat_id}: {e}")
+        
+        return result
     
     def _handle_demo(self, state: ConversationState) -> ConversationState:
         """Обработка демонстрационных функций"""
@@ -289,6 +325,13 @@ class MainGraph:
                 result["answer"] = prefix + answer
             logger.info(f"📤 [DEMO] Ответ demo-агента готов (длина: {len(result['answer'])} символов), добавлен префикс '[Демонстрация]'")
         
+        # Сохраняем стадию в YDB
+        if chat_id:
+            try:
+                self.dialog_state_storage.set_stage(chat_id, "demo")
+            except Exception as e:
+                logger.error(f"Ошибка при сохранении стадии demo для chat_id={chat_id}: {e}")
+        
         return result
     
     def _handle_demo_setup(self, state: ConversationState) -> ConversationState:
@@ -299,5 +342,14 @@ class MainGraph:
         chat_id = state.get("chat_id")
         
         agent_result = self.demo_setup_agent(message, previous_response_id, chat_id=chat_id)
-        return self._process_agent_result(self.demo_setup_agent, agent_result, state, "DemoSetupAgent")
+        result = self._process_agent_result(self.demo_setup_agent, agent_result, state, "DemoSetupAgent")
+        
+        # Сохраняем стадию в YDB
+        if chat_id:
+            try:
+                self.dialog_state_storage.set_stage(chat_id, "demo_setup")
+            except Exception as e:
+                logger.error(f"Ошибка при сохранении стадии demo_setup для chat_id={chat_id}: {e}")
+        
+        return result
 

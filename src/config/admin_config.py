@@ -38,3 +38,13 @@ def get_admin_topics_table() -> str:
     return os.getenv("ADMIN_TOPICS_TABLE", "adminpanel")
 
 
+def get_dialog_states_table() -> str:
+    """
+    Получает название таблицы для хранения состояний диалогов в БД.
+    
+    Returns:
+        Название таблицы (по умолчанию "dialog_states")
+    """
+    return os.getenv("DIALOG_STATES_TABLE", "dialog_states")
+
+

@@ -3,6 +3,7 @@
 """
 from .base_agent import BaseAgent
 from ..services.langgraph_service import LangGraphService
+from .tools.switch_to_demo_tool import SwitchToDemoTool
 
 
 class AdminAgent(BaseAgent):
@@ -92,7 +93,7 @@ class AdminAgent(BaseAgent):
         super().__init__(
             langgraph_service=langgraph_service,
             instruction=instruction,
-            tools=[],
+            tools=[SwitchToDemoTool],
             agent_name="Административный агент"
         )
 

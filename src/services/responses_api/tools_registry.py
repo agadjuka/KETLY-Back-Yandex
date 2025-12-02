@@ -74,6 +74,20 @@ class ResponsesToolsRegistry:
                 # Получаем conversation_history и chat_id из kwargs, если переданы
                 conversation_history = kwargs.pop('_conversation_history', None)
                 chat_id = kwargs.pop('_chat_id', None)
+                
+                # Если у инструмента есть поля storage или chat_id, передаем их в экземпляр
+                if hasattr(tool_class, 'model_fields'):
+                    if 'chat_id' in tool_class.model_fields and chat_id:
+                        # Обновляем chat_id в экземпляре, если поле есть
+                        tool_instance.chat_id = chat_id
+                    if 'storage' in tool_class.model_fields:
+                        # Получаем storage через фабрику, если поле есть
+                        try:
+                            from ...storage.dialog_state_storage_factory import get_dialog_state_storage
+                            tool_instance.storage = get_dialog_state_storage()
+                        except Exception as e:
+                            logger.debug(f"Не удалось получить storage для {tool_name}: {e}")
+                
                 mock_thread = MockThread(conversation_history=conversation_history, chat_id=chat_id)
                 
                 # Вызываем process
