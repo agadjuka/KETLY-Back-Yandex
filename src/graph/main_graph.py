@@ -4,7 +4,6 @@
 from typing import Literal
 from langgraph.graph import StateGraph, START, END
 from .conversation_state import ConversationState
-from ..agents.stage_detector_agent import StageDetectorAgent
 from ..agents.admin_agent import AdminAgent
 from ..agents.demo_agent import DemoAgent
 from ..agents.demo_setup_agent import DemoSetupAgent
@@ -39,7 +38,6 @@ class MainGraph:
         if cache_key not in MainGraph._agents_cache:
             # Создаём агентов только если их ещё нет в кэше
             MainGraph._agents_cache[cache_key] = {
-                'stage_detector': StageDetectorAgent(langgraph_service),
                 'admin': AdminAgent(langgraph_service),
                 'demo': DemoAgent(langgraph_service),
                 'demo_setup': DemoSetupAgent(langgraph_service),
@@ -47,7 +45,6 @@ class MainGraph:
         
         # Используем агентов из кэша
         agents = MainGraph._agents_cache[cache_key]
-        self.stage_detector = agents['stage_detector']
         self.admin_agent = agents['admin']
         self.demo_agent = agents['demo']
         self.demo_setup_agent = agents['demo_setup']
@@ -78,72 +75,57 @@ class MainGraph:
                 "end": END
             }
         )
-        graph.add_edge("handle_admin", END)
+        graph.add_conditional_edges(
+            "handle_admin",
+            self._route_after_admin,
+            {
+                "demo": "handle_demo",
+                "end": END
+            }
+        )
         graph.add_edge("handle_demo", END)
         graph.add_edge("handle_demo_setup", END)
         return graph
     
     def _detect_stage(self, state: ConversationState) -> ConversationState:
-        """Узел определения стадии"""
+        """Узел определения стадии (State Machine вместо AI Router)"""
         logger.info("Определение стадии диалога")
         
-        message = state["message"]
-        previous_response_id = state.get("previous_response_id")
+        message = state.get("message", "")
         chat_id = state.get("chat_id")
         
-        # Проверяем сохраненную стадию в YDB
-        saved_stage = None
-        if chat_id:
-            saved_stage = self.dialog_state_storage.get_stage(chat_id)
-            if saved_stage:
-                logger.info(f"Найдена сохраненная стадия для chat_id={chat_id}: {saved_stage}")
-        
-        # Если стадия найдена, используем её
-        # Иначе определяем через агента
-        if saved_stage:
-            stage = saved_stage
-            logger.info(f"Используется сохраненная стадия: {stage}")
-        else:
-            # Определяем стадию через агента
-            stage_detection = self.stage_detector.detect_stage(message, previous_response_id, chat_id=chat_id)
-            
-            # Проверяем, был ли вызван CallManager в StageDetectorAgent
-            if hasattr(self.stage_detector, '_call_manager_result') and self.stage_detector._call_manager_result:
-                escalation_result = self.stage_detector._call_manager_result
-                logger.info(f"CallManager был вызван в StageDetectorAgent, chat_id: {chat_id}")
-                
-                return {
-                    "answer": escalation_result.get("user_message"),
-                    "manager_alert": escalation_result.get("manager_alert"),
-                    "agent_name": "StageDetectorAgent",
-                    "used_tools": ["CallManager"],
-                    "response_id": None  # CallManager не возвращает response_id
-                }
-            
-            stage = stage_detection.stage
-            
-            # Сохраняем определенную стадию в YDB
+        # Проверка команды "СТОП"
+        if message.strip().lower() == "стоп":
+            logger.info(f"Обнаружена команда 'стоп' для chat_id={chat_id}")
             if chat_id:
                 try:
-                    self.dialog_state_storage.set_stage(chat_id, stage)
-                    logger.info(f"Сохранена стадия для chat_id={chat_id}: {stage}")
+                    self.dialog_state_storage.set_stage(chat_id, "admin")
+                    logger.info(f"Установлена стадия 'admin' для chat_id={chat_id} после команды 'стоп'")
                 except Exception as e:
-                    logger.error(f"Ошибка при сохранении стадии для chat_id={chat_id}: {e}")
+                    logger.error(f"Ошибка при установке стадии 'admin' для chat_id={chat_id}: {e}")
+            return {"stage": "admin"}
         
-        return {
-            "stage": stage
-        }
+        # Обычный режим - получаем стадию из хранилища
+        stage = None
+        if chat_id:
+            try:
+                stage = self.dialog_state_storage.get_stage(chat_id)
+                if stage:
+                    logger.info(f"Найдена сохраненная стадия для chat_id={chat_id}: {stage}")
+            except Exception as e:
+                logger.error(f"Ошибка при получении стадии для chat_id={chat_id}: {e}")
+        
+        # Если стадия не найдена, используем "admin" по умолчанию
+        if not stage:
+            stage = "admin"
+            logger.info(f"Стадия не найдена, используем по умолчанию: {stage}")
+        
+        return {"stage": stage}
     
     def _route_after_detect(self, state: ConversationState) -> Literal[
         "admin", "demo", "demo_setup", "end"
     ]:
         """Маршрутизация после определения стадии"""
-        # Если CallManager был вызван, завершаем граф
-        if state.get("answer") and state.get("manager_alert"):
-            logger.info("CallManager был вызван в StageDetectorAgent, завершаем граф")
-            return "end"
-        
-        # Иначе маршрутизируем по стадии
         stage = state.get("stage", "admin")
         logger.info(f"Маршрутизация на стадию: {stage}")
         
@@ -206,6 +188,25 @@ class MainGraph:
             "used_tools": used_tools,
             "response_id": response_id
         }
+    
+    def _route_after_admin(self, state: ConversationState) -> Literal["demo", "end"]:
+        """Маршрутизация после обработки админом - проверка на переключение в demo"""
+        # Проверяем использованные инструменты
+        used_tools = state.get("used_tools", [])
+        answer = state.get("answer", "")
+        
+        # Проверяем, был ли использован инструмент SwitchToDemoTool
+        if "SwitchToDemoTool" in used_tools:
+            logger.info("Обнаружен инструмент SwitchToDemoTool, переключаемся на demo")
+            return "demo"
+        
+        # Проверяем маркер в ответе
+        if "[SWITCH_TO_DEMO_RESULT]" in answer:
+            logger.info("Обнаружен маркер [SWITCH_TO_DEMO_RESULT] в ответе, переключаемся на demo")
+            return "demo"
+        
+        # Иначе завершаем граф
+        return "end"
     
     def _handle_admin(self, state: ConversationState) -> ConversationState:
         """Обработка административных функций"""
