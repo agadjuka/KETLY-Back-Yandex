@@ -9,7 +9,6 @@ from .base_agent import BaseAgent
 from .dialogue_stages import DialogueStage
 from ..services.langgraph_service import LangGraphService
 from ..services.logger_service import logger
-from .tools.call_manager_tools import CallManager
 
 
 class StageDetection(BaseModel):
@@ -44,7 +43,7 @@ class StageDetectorAgent(BaseAgent):
         super().__init__(
             langgraph_service=langgraph_service,
             instruction=instruction,
-            tools=[CallManager],
+            tools=[],
             agent_name="Определитель стадий диалога"
         )
     

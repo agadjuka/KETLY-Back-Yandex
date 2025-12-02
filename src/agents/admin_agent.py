@@ -3,7 +3,6 @@
 """
 from .base_agent import BaseAgent
 from ..services.langgraph_service import LangGraphService
-from .tools.call_manager_tools import CallManager
 
 
 class AdminAgent(BaseAgent):
@@ -93,9 +92,10 @@ class AdminAgent(BaseAgent):
         super().__init__(
             langgraph_service=langgraph_service,
             instruction=instruction,
-            tools=[CallManager],
+            tools=[],
             agent_name="Административный агент"
         )
+
 
 
 
