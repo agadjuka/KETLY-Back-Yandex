@@ -82,11 +82,11 @@ app = FastAPI(
 # Настраиваем CORS для веб-запросов (максимально разрешающий для отладки)
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex="https?://.*",  # Разрешить любой домен по регексу (это хак для credentials)
-    allow_credentials=True,            # Разрешить credentials
-    allow_methods=["*"],               # Разрешить любые методы (POST, GET, OPTIONS и т.д.)
-    allow_headers=["*"],               # Разрешить любые заголовки
-    expose_headers=["*"],             # Разрешить доступ к любым заголовкам ответа
+    allow_origin_regex=".*",  # Разрешить ВСЕ домены (более мощный аналог "*")
+    allow_credentials=True,   # Разрешить куки и авторизацию
+    allow_methods=["*"],      # Разрешить любые методы (POST, GET, OPTIONS и т.д.)
+    allow_headers=["*"],      # Разрешить любые заголовки
+    expose_headers=["*"],      # Разрешить доступ к любым заголовкам ответа
 )
 
 # Middleware для логирования всех запросов
@@ -249,6 +249,20 @@ async def chat_test():
     """Тестовый endpoint для проверки доступности /chat"""
     print("✅ [CHAT] Тестовый запрос GET /chat/test получен", flush=True)
     return {"status": "OK", "message": "Chat endpoint is available"}
+
+@app.options("/chat", tags=["Chat"])
+async def chat_options_handler():
+    """Принудительный обработчик CORS preflight запросов"""
+    print("✅ [CHAT] Ручной OPTIONS запрос обработан", flush=True)
+    return JSONResponse(
+        content={"status": "ok"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
+            "Access-Control-Allow-Headers": "*",
+        },
+        status_code=200
+    )
 
 @app.post("/chat", tags=["Chat"], response_model=WebChatResponse)
 async def chat_endpoint(request: ChatRequest):
