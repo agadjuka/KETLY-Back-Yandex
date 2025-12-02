@@ -141,9 +141,19 @@ class YDBTopicStorage(BaseTopicStorage):
             
             if not rows or not rows[0].user_id:
                 return None
-            
-            user_id_str = rows[0].user_id.decode() if isinstance(rows[0].user_id, bytes) else rows[0].user_id
-            return int(user_id_str)
+
+            user_id_raw = rows[0].user_id
+            user_id_str = user_id_raw.decode() if isinstance(user_id_raw, bytes) else user_id_raw
+
+            # Поддерживаем оба варианта:
+            # - числовые Telegram user_id
+            # - строковые thread_id из веб-фронтенда (UUID и др.)
+            try:
+                # Если это число, вернем int (для Telegram-пользователей)
+                return int(user_id_str)
+            except (TypeError, ValueError):
+                # Если это не число (например, UUID), вернем строку как есть
+                return user_id_str
         except Exception as e:
             logger.error(
                 "Ошибка при получении user_id для topic_id=%s: %s",

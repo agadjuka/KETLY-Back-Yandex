@@ -8,20 +8,17 @@ from typing import Any
 def create_virtual_user(thread_id: str) -> Any:
     """
     Создает виртуальный User объект из thread_id для совместимости с админ-панелью.
-    
-    Args:
-        thread_id: UUID сессии с фронтенда
-        
-    Returns:
-        Виртуальный User объект (SimpleNamespace с атрибутами User)
+
+    ВАЖНО:
+    - В качестве id пользователя используется сам thread_id (строка UUID).
+    - Это гарантирует, что во всех местах (история сообщений, админ-панель, YDB)
+      используется один и тот же стабильный идентификатор сессии.
     """
-    # Преобразуем thread_id в числовой ID для совместимости
-    # Используем хэш от thread_id, чтобы получить стабильный числовой ID
-    user_id = abs(hash(thread_id)) % (10 ** 9)  # Ограничиваем до 9 цифр
-    
+
     # Создаем виртуальный User объект с необходимыми атрибутами
+    # Используем thread_id напрямую как идентификатор "пользователя"
     user = SimpleNamespace(
-        id=user_id,
+        id=thread_id,
         is_bot=False,
         first_name=f"Web User {thread_id[:8]}",
         last_name=None,
