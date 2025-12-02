@@ -15,3 +15,5 @@ class WebChatResponse(BaseModel):
     """Модель ответа для /chat endpoint"""
     response: str = Field(..., description="Текст ответа от AI-агента")
 
+
+

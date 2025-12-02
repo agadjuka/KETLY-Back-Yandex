@@ -24,4 +24,10 @@ paths:
         type: http
         url: https://bba8gegarqvrukquktud.containers.yandexcloud.net/{proxy}
         method: get
+    options:
+      summary: Proxy all OPTIONS requests to container (for CORS)
+      x-yc-apigateway-integration:
+        type: http
+        url: https://bba8gegarqvrukquktud.containers.yandexcloud.net/{proxy}
+        method: options
 

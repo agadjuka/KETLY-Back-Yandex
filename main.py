@@ -18,6 +18,7 @@ print("✅ .env загружен", flush=True)
 
 try:
     from fastapi import FastAPI, Request
+    from fastapi.middleware.cors import CORSMiddleware
     print("✅ FastAPI импортирован", flush=True)
 except Exception as e:
     print(f"❌ Ошибка импорта FastAPI: {e}", flush=True)
@@ -75,6 +76,27 @@ app = FastAPI(
     title="Looktown Bot",
     version="0.1.0"
 )
+
+# Настраиваем CORS для веб-запросов
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # В продакшене лучше указать конкретные домены
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Middleware для логирования всех запросов
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Логирует все входящие запросы"""
+    method = request.method
+    path = request.url.path
+    print(f"🌐 [REQUEST] {method} {path}", flush=True)
+    logger.info(f"🌐 [REQUEST] {method} {path}")
+    
+    response = await call_next(request)
+    return response
 
 @app.on_event("startup")
 async def startup_event():
@@ -196,6 +218,18 @@ async def root_post_handler(request: Request):
     """POST обработчик для корневого пути"""
     return await root_post(request)
 
+@app.get("/chat/test", tags=["Chat"])
+async def chat_test():
+    """Тестовый endpoint для проверки доступности /chat"""
+    print("✅ [CHAT] Тестовый запрос GET /chat/test получен", flush=True)
+    return {"status": "OK", "message": "Chat endpoint is available"}
+
+@app.options("/chat", tags=["Chat"])
+async def chat_options():
+    """Обработчик OPTIONS для CORS preflight запросов"""
+    print("✅ [CHAT] OPTIONS запрос получен", flush=True)
+    return {"status": "OK"}
+
 @app.post("/chat", tags=["Chat"], response_model=WebChatResponse)
 async def chat_endpoint(request: ChatRequest):
     """
@@ -205,9 +239,14 @@ async def chat_endpoint(request: ChatRequest):
     Поддерживает отправку сообщений в админ-панель и проверку CallManager.
     """
     try:
+        # Логируем в stdout для гарантированной видимости в Yandex Cloud
+        print(f"📨 [CHAT] Получен запрос /chat", flush=True)
+        logger.info("📨 [CHAT] Получен запрос /chat")
+        
         message_text = request.message
         thread_id = request.thread_id
         
+        print(f"📨 [CHAT] thread_id={thread_id}, message_length={len(message_text)}", flush=True)
         logger.info(f"Получен запрос /chat: thread_id={thread_id}, message_length={len(message_text)}")
         
         # Создаем виртуального пользователя из thread_id
@@ -286,7 +325,11 @@ async def chat_endpoint(request: ChatRequest):
         return WebChatResponse(response=user_message_text)
         
     except Exception as e:
-        logger.error(f"Ошибка при обработке /chat endpoint: {e}", exc_info=True)
+        error_msg = f"Ошибка при обработке /chat endpoint: {e}"
+        print(f"❌ [CHAT] {error_msg}", flush=True)
+        import traceback
+        print(f"❌ [CHAT] Traceback:\n{traceback.format_exc()}", flush=True)
+        logger.error(error_msg, exc_info=True)
         # Возвращаем ошибку пользователю
         error_message = f"Ошибка при обработке сообщения: {str(e)}"
         return WebChatResponse(response=error_message)
