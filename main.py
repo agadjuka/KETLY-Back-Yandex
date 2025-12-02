@@ -82,11 +82,11 @@ app = FastAPI(
 # Настраиваем CORS для веб-запросов (максимально разрешающий для отладки)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Разрешить запросы с любых доменов
-    allow_credentials=False,  # Нельзя использовать True с allow_origins=["*"]
-    allow_methods=["*"],  # Разрешить любые методы (POST, GET, OPTIONS и т.д.)
-    allow_headers=["*"],  # Разрешить любые заголовки
-    expose_headers=["*"],  # Разрешить доступ к любым заголовкам ответа
+    allow_origin_regex="https?://.*",  # Разрешить любой домен по регексу (это хак для credentials)
+    allow_credentials=True,            # Разрешить credentials
+    allow_methods=["*"],               # Разрешить любые методы (POST, GET, OPTIONS и т.д.)
+    allow_headers=["*"],               # Разрешить любые заголовки
+    expose_headers=["*"],             # Разрешить доступ к любым заголовкам ответа
 )
 
 # Middleware для логирования всех запросов
