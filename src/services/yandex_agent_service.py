@@ -1,19 +1,13 @@
 """
 Модуль для работы с LangGraph (Responses API)
 """
-import os
-import time
 import asyncio
-from datetime import datetime
-import pytz
-from typing import Optional, List, Dict, Any
 from ..ydb_client import get_ydb_client
 from .auth_service import AuthService
 from .debug_service import DebugService
 from .logger_service import logger
 from ..graph.main_graph import MainGraph
 from .langgraph_service import LangGraphService
-import requests
 
 
 class YandexAgentService:
@@ -30,10 +24,6 @@ class YandexAgentService:
         # Ленивая инициализация LangGraph
         self._langgraph_service = None
         self._main_graph = None
-        
-        # Инициализация кэша времени
-        self._time_cache = None
-        self._time_cache_timestamp = 0
     
     @property
     def langgraph_service(self) -> LangGraphService:
@@ -49,51 +39,6 @@ class YandexAgentService:
             self._main_graph = MainGraph(self.langgraph_service)
         return self._main_graph
     
-    def _get_moscow_time(self) -> str:
-        """Получить текущее время и дату в московском часовом поясе через внешний API"""
-        current_time = time.time()
-        
-        # Используем кэш, если прошло меньше минуты
-        if self._time_cache and (current_time - self._time_cache_timestamp) < 60:
-            return self._time_cache
-        
-        try:
-            # Получаем точное время через WorldTimeAPI
-            response = requests.get(
-                'http://worldtimeapi.org/api/timezone/Europe/Moscow',
-                timeout=2
-            )
-            response.raise_for_status()
-            data = response.json()
-            datetime_str = data['datetime']
-            
-            # Преобразуем строку в datetime
-            if datetime_str.endswith('Z'):
-                datetime_str = datetime_str[:-1] + '+00:00'
-            moscow_time = datetime.fromisoformat(datetime_str)
-            
-            # Форматируем
-            date_time_str = moscow_time.strftime("%Y-%m-%d %H:%M")
-            result = f"Текущее время: {date_time_str}"
-            
-            # Сохраняем в кэш
-            self._time_cache = result
-            self._time_cache_timestamp = current_time
-            
-            return result
-        except Exception:
-            # Fallback на системное время
-            moscow_tz = pytz.timezone('Europe/Moscow')
-            moscow_time = datetime.now(moscow_tz)
-            date_time_str = moscow_time.strftime("%Y-%m-%d %H:%M")
-            result = f"Текущее время: {date_time_str}"
-            
-            # Кэшируем fallback тоже
-            self._time_cache = result
-            self._time_cache_timestamp = current_time
-            
-            return result
-    
     async def send_to_agent_langgraph(self, chat_id: str, user_text: str) -> dict:
         """Отправка сообщения через LangGraph (Responses API)"""
         from ..graph.conversation_state import ConversationState
@@ -104,13 +49,9 @@ class YandexAgentService:
             chat_id
         )
         
-        # Добавляем московское время в начало сообщения
-        moscow_time = self._get_moscow_time()
-        input_with_time = f"[{moscow_time}] {user_text}"
-        
         # Создаём начальное состояние
         initial_state: ConversationState = {
-            "message": input_with_time,
+            "message": user_text,
             "previous_response_id": last_response_id,
             "chat_id": chat_id,
             "stage": None,
