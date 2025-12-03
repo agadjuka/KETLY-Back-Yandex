@@ -30,7 +30,6 @@ class PromptUpdater:
             project_root: Корневая директория проекта
         """
         self.project_root = Path(project_root)
-        self.router_file = self.project_root / "src" / "agents" / "stage_detector_agent.py"
         self.agents_dir = self.project_root / "src" / "agents"
     
     def _read_content(self, file_path: Path) -> str:
@@ -48,10 +47,9 @@ class PromptUpdater:
         pass
     
     def update_router_prompt(self, new_prompt: str) -> None:
-        """Обновляет промпт роутера в stage_detector_agent.py."""
-        content = self._read_content(self.router_file)
-        new_content = update_prompt(content, new_prompt)
-        self._write_content(self.router_file, new_content)
+        """Обновление промпта роутера больше не поддерживается (используется State Machine)."""
+        # Роутер больше не используется - маршрутизация через State Machine
+        pass
     
     def update_stage_prompt(self, stage_key: str, new_prompt: str) -> None:
         """Обновляет промпт стадии в файле агента."""

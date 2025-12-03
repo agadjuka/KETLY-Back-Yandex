@@ -11,6 +11,8 @@ except ImportError:
     class SimpleLogger:
         def error(self, msg, *args, **kwargs):
             print(f"ERROR: {msg}")
+        def info(self, msg, *args, **kwargs):
+            print(f"INFO: {msg}")
     logger = SimpleLogger()
 
 

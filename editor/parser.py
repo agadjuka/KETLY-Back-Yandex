@@ -30,7 +30,6 @@ class PromptParser:
             project_root: Корневая директория проекта
         """
         self.project_root = Path(project_root)
-        self.router_file = self.project_root / "src" / "agents" / "stage_detector_agent.py"
         self.agents_dir = self.project_root / "src" / "agents"
     
     def parse(self) -> Dict[str, Any]:
@@ -39,18 +38,11 @@ class PromptParser:
         Returns:
             Словарь с промптами и стадиями
         """
-        router_content = self.router_file.read_text(encoding="utf-8")
-        
         return {
-            "router_prompt": self._extract_router_prompt(router_content),
-            "stages": self._extract_stages(router_content)
+            "stages": self._extract_stages()
         }
     
-    def _extract_router_prompt(self, content: str) -> str:
-        """Извлекает промпт роутера из stage_detector_agent.py."""
-        return extract_prompt(content)
-    
-    def _extract_stages(self, router_content: str) -> List[Dict[str, str]]:
+    def _extract_stages(self) -> List[Dict[str, str]]:
         """Извлекает информацию о стадиях из реестра агентов."""
         try:
             setup_packages(self.project_root, [
@@ -70,9 +62,6 @@ class PromptParser:
             
             stages = []
             for agent in agents:
-                if agent["key"] == "stage_detector":
-                    continue
-                    
                 prompt = self._extract_stage_prompt_from_file(agent["key"], agent["file"])
                 stages.append({
                     "key": agent["key"],

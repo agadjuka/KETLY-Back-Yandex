@@ -23,7 +23,7 @@ class AgentRegistry:
         agents_dir = Path(__file__).parent
         
         # Исключаем файлы, которые не являются агентами
-        excluded_files = {'base_agent.py', 'stage_detector_agent.py', '__init__.py', 'registry.py', 'dialogue_stages.py'}
+        excluded_files = {'base_agent.py', '__init__.py', 'registry.py', 'dialogue_stages.py'}
         
         # Маппинг ключей агентов на читаемые имена
         agent_names = {

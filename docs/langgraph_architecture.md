@@ -3,7 +3,7 @@
 ## Общая схема потока запроса
 
 ```
-Telegram Webhook → Telegram Handler → YandexAgentService → MainGraph → Router (StageDetectorAgent) → Специализированный агент → Ответ
+Telegram Webhook → Telegram Handler → YandexAgentService → MainGraph (State Machine) → Специализированный агент → Ответ
 ```
 
 ## Детальная схема обработки
@@ -37,18 +37,24 @@ Telegram Webhook → Telegram Handler → YandexAgentService → MainGraph → R
 #### Структура графа:
 ```
 START → detect_stage → [conditional_edges] → handle_admin/handle_demo/handle_demo_setup → END
+                    ↓
+            handle_admin → [conditional_edges] → handle_demo/END
 ```
 
 #### Узлы графа:
-1. **detect_stage** - вызывает `StageDetectorAgent.detect_stage()`
+1. **detect_stage** - State Machine: проверяет команду "стоп" или читает стадию из DialogStateStorage (YDB)
 2. **handle_admin** - вызывает `AdminAgent()`
 3. **handle_demo** - вызывает `DemoAgent()` (с конфигурацией из БД)
 4. **handle_demo_setup** - вызывает `DemoSetupAgent()`
 
 #### Маршрутизация:
 **Метод:** `_route_after_detect(state)`
-- Проверяет, был ли вызван CallManager → возвращает "end"
-- Иначе возвращает стадию из state: "admin", "demo", "demo_setup"
+- Возвращает стадию из state: "admin", "demo", "demo_setup"
+
+**Метод:** `_route_after_admin(state)`
+- Проверяет использование инструмента `SwitchToDemoTool` или маркер `[SWITCH_TO_DEMO_RESULT]`
+- Если обнаружено → возвращает "demo" для переключения на демо-режим
+- Иначе → возвращает "end"
 
 #### Особенности handle_demo:
 - Проверяет наличие конфигурации в БД для `thread_id=chat_id`
@@ -57,15 +63,18 @@ START → detect_stage → [conditional_edges] → handle_admin/handle_demo/hand
 - Создает `DemoAgent` с заполненным промптом из конфигурации
 - Добавляет префикс "[Демонстрация] " к ответу
 
-### 5. StageDetectorAgent (Роутер)
-**Файл:** `src/agents/stage_detector_agent.py`
-- Наследуется от `BaseAgent`
-- Инструкция: определяет стадию диалога ("admin" или "demo")
-- Инструменты: `CallManager`
-- Метод `detect_stage()`:
-  - Вызывает `self(message, previous_response_id, chat_id)`
-  - Парсит ответ через `_parse_response()`
-  - Возвращает `StageDetection(stage="admin"|"demo")`
+### 5. DialogStateStorage (State Machine)
+**Файл:** `src/storage/dialog_state_storage.py`
+- Хранилище состояний диалогов в YDB
+- Таблица: `dialog_states` (chat_id, current_stage)
+- Методы:
+  - `get_stage(chat_id)` - получает текущую стадию ("admin", "demo", "demo_setup" или None)
+  - `set_stage(chat_id, stage)` - устанавливает стадию
+
+**Логика определения стадии в `detect_stage`:**
+1. Проверка команды "стоп" → устанавливает стадию "admin"
+2. Иначе читает стадию из DialogStateStorage
+3. Если стадия не найдена → использует "admin" по умолчанию
 
 ### 6. BaseAgent (Базовый класс всех агентов)
 **Файл:** `src/agents/base_agent.py`

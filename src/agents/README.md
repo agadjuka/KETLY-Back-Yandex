@@ -2,7 +2,7 @@
 
 ## Архитектура агентов
 
-Проект использует архитектуру на основе LangGraph с системой роутинга через `StageDetectorAgent`. 
+Проект использует архитектуру на основе LangGraph с системой State Machine для маршрутизации.
 
 ### Основные компоненты:
 
@@ -11,13 +11,13 @@
    - Использует Responses API для работы с Yandex GPT
    - Поддерживает инструменты (tools) и логирование
 
-2. **StageDetectorAgent** (`stage_detector_agent.py`) - роутер, определяющий стадию диалога
-   - Анализирует сообщение пользователя
-   - Определяет, к какому агенту направить запрос
-   - Использует enum `DialogueStage` для определения стадий
+2. **DialogStateStorage** (`src/storage/dialog_state_storage.py`) - хранилище состояний диалогов
+   - Хранит текущую стадию диалога в YDB
+   - Используется для маршрутизации между агентами
+   - Стадия определяется через State Machine (не AI Router)
 
 3. **MainGraph** (`src/graph/main_graph.py`) - основной граф состояний
-   - Управляет маршрутизацией между агентами
+   - Управляет маршрутизацией между агентами через State Machine
    - Создает и кэширует экземпляры агентов
    - Обрабатывает результаты работы агентов
 
@@ -99,7 +99,6 @@ from ..agents.your_agent import YourAgent
 
 ```python
 MainGraph._agents_cache[cache_key] = {
-    'stage_detector': StageDetectorAgent(langgraph_service),
     'admin': AdminAgent(langgraph_service),
     'demo': DemoAgent(langgraph_service),
     'your_stage': YourAgent(langgraph_service),  # Добавьте здесь
@@ -111,7 +110,6 @@ MainGraph._agents_cache[cache_key] = {
 После блока с кэшем:
 
 ```python
-self.stage_detector = agents['stage_detector']
 self.admin_agent = agents['admin']
 self.demo_agent = agents['demo']
 self.your_agent = agents['your_stage']  # Добавьте здесь
